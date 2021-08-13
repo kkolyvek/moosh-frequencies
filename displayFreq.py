@@ -5,12 +5,16 @@ import math
 from matplotlib import pyplot as plt
 
 # IMPORT METHODS
-from helpers import getVideoInfo, isInCircle
+from helpers import getVideoInfo, isInCircle, progressBar
+from filter import mooshFilters
 
 def display_freq(vidObj):
     # function to find and display shark tail beat frequency.
     # This function doesn't display the video (just the final result),
     # see later functions to view video
+
+    count = 0
+    length = int(vidObj.get(cv2.CAP_PROP_FRAME_COUNT))
 
     slope_left = []; # initialize arrays for slope data
     slope_right = []
@@ -23,31 +27,7 @@ def display_freq(vidObj):
         if ret == True:
             frame = frame[75:int(vidObj.get(4))-75, 0:int(vidObj.get(3))] # crop frame to remove top and bottom bars of video
 
-            """
-            General outline of video analysis script is as follows:
-            1. Bilateral filter: to smooth image while keeping sharp shark edges. This step is very slow but
-               greatly increases detection accuracy.
-            2. Convert from RGB to HSV: to get to a color space that'll be easier to set filter limits in.
-            3. Masking: this is the step that changes most from video to video. Play around with filtering here to get
-               satisfactory edge detection. This script has two filters, often one will suffice.
-            4. Convert from HSV to Grayscale: the findContours function requires grayscale images
-            5. Set threshold and find Contours
-            """
-
-            blur = cv2.bilateralFilter(frame,20,75,75)
-
-            hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV) # RGB to HSV
-
-            mask_gray = cv2.inRange(hsv, (0,0,110),(180,255,255))
-            mask_green = cv2.inRange(hsv, (40,25,0),(100,255,255))
-            mask = cv2.bitwise_or(mask_gray, mask_green)
-            filtered = cv2.bitwise_and(blur, blur, mask = mask)
-
-            gray = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY) # HSV to Grayscale
-            gray_invert = cv2.bitwise_not(gray) # Invert gray scale image as findContours program searches for light objects on dark backgrounds
-
-            ret, thresh = cv2.threshold(gray_invert, 165, 255, cv2.THRESH_TOZERO)  # (165, 255, 0) is the best value combo ive found for threshold
-            contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            gray_invert, contours = mooshFilters(frame)
 
             cx = 0
             cy = 0
@@ -84,6 +64,9 @@ def display_freq(vidObj):
             # take slopes of lines between head and center, center and tail
             slope_left.append((cy-tuple_left[1])/(cx-tuple_left[0]))
             slope_right.append((tuple_right[1]-cy)/(tuple_right[0]-cx))
+
+            progressBar(count, length, status = 'doin the math') # progress bar so i don't go crazy waiting
+            count += 1
 
             # Press Q on keyboard to stop recording
             if cv2.waitKey(1) & 0xFF == ord('q'):
