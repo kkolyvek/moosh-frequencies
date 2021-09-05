@@ -1,2 +1,6 @@
 # none of this
 __pycache__
+
+# no vides
+*.MOV
+*.mp4

@@ -5,7 +5,8 @@ import math
 
 # IMPORT METHODS
 from helpers import isInCircle
-from filter import mooshFilters
+from filter import mooshFilters, hardFilter
+
 
 def display_vid(vidObj):
     # function to display video analysis process.
@@ -13,96 +14,139 @@ def display_vid(vidObj):
     # calculations and instead displays video.
 
     # video windows
-    cv2.namedWindow('orig', cv2.WINDOW_NORMAL) # Create window with freedom of dimensions
-    cv2.resizeWindow('orig', 960,540) # scale window to half screen (view 2 at once)
-    cv2.moveWindow('orig', 0,0)
+    # Create window with freedom of dimensions
+    cv2.namedWindow('orig', cv2.WINDOW_NORMAL)
+    # scale window to half screen (view 2 at once)
+    cv2.resizeWindow('orig', 960, 540)
+    cv2.moveWindow('orig', 0, 0)  # move window into place
     cv2.namedWindow('analysis', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('analysis', 960,540)
-    cv2.moveWindow('analysis', 960,0)
+    cv2.resizeWindow('analysis', 960, 540)
+    cv2.moveWindow('analysis', 10, 540)
 
     slope_left = []
     slope_right = []
     while(True):
-        enclosed_x = []
-        enclosed_y = []
-        enclosed_tuples = []
-
         ret, frame = vidObj.read()
 
         if ret == True:
             frame = frame[75:int(vidObj.get(4))-75, 0:int(vidObj.get(3))]
 
-            gray_invert, contours = mooshFilters(frame)
+            """
+            SELECT FILTER IF NECESSARY - Comment out others.
+            ---------------------------------------------------------------------
+            """
 
-            cv2.drawContours(gray_invert, contours, -1, (0,255,0), 5)
-            cv2.drawContours(frame, contours, -1, (0,0,255), 10)
+            # Bilateral filter, sea-green colors
+            # gray_invert, contours = mooshFilters(frame)
 
-            cx = 0
-            cy = 0
+            # inRange, cutting out sea-greens
+            gray_invert, contours = hardFilter(frame)
+
+            """
+            ---------------------------------------------------------------------
+            """
+
+            cv2.drawContours(frame, contours, -1, (0, 0, 255), 1)
+
+            # TODO: Use Moments to find actual centroid
+            # https://docs.opencv.org/4.5.1/dd/d49/tutorial_py_contour_features.html, section 1
+            cx = 0  # average x value (for centroid approx)
+            cy = 0  # average y value (for centroid approx)
+            c_target = []  # array of contours on target
+
             for c in contours:
                 (x, y), radius = cv2.minEnclosingCircle(c)
                 center = (int(x), int(y))
                 radius = int(radius)
-                x_in_circle = np.array(list(range(int(x)-radius, int(x)+radius)))
 
-                if 50 < radius < 10000:
-                    cv2.circle(gray_invert, center, radius, (255, 0, 0), 2)
-                    # display some of the info onto the image
-                    centertxt = 'Enclosing Circle Center: ' + str(x) + ',' + str(y)
-                    radtxt = 'Enclosing Circle Radius: ' + str(radius) + ' px'
-                    cv2.putText(gray_invert, centertxt, (75,150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,0), 4, cv2.LINE_4)
-                    cv2.putText(gray_invert, radtxt, (75,250), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,0), 4, cv2.LINE_4)
+                # this radius limit ensures no small artifacts and no larger circle around the image
+                if 25 < radius < 10000:
+                    # draw contour's min enclosing circle
+                    cv2.circle(frame, center, radius, (0, 255, 0), 2)
 
-                    for arrays in c:
-                        if isInCircle(arrays[0], center, radius):
-                            enclosed_x.append(arrays[0][0])
-                            enclosed_y.append(arrays[0][1])
-                            enclosed_tuples.append((arrays[0][0],arrays[0][1]))
-                            cx += arrays[0][0]
-                            cy += arrays[0][1]
+                    # record a target contour
+                    c_target.append(c)
 
-                    cx = int(cx/len(enclosed_x))
-                    cy = int(cy/len(enclosed_y))
-                    cv2.circle(frame, (cx,cy), 10, (255,0,0), -1)
+                    # record center values
+                    cx += center[0]
+                    cy += center[1]
 
-                    # Find two furthest tuples in enclosed_tuples.
-                    # Currently this finds the furthest point to the right & left
-                    # of the enclosing circle center. This might run into some
-                    # issues when the shark is perfectly vertical in frame
-                    # but that's unlikely so this works for now.
+            center = (cx/len(c_target), cy/len(c_target))
 
-                    tuple_left = center
-                    tuple_right = center
-                    for tuple in enclosed_tuples:
-                        tuple_dist = math.sqrt(((center[1]-tuple[1]) ** 2) + ((center[0]-tuple[0]) ** 2))
-                        tuple_left_dist = math.sqrt(((center[1]-tuple_left[1]) ** 2) + ((center[0]-tuple_left[0]) ** 2))
-                        tuple_right_dist = math.sqrt(((center[1]-tuple_right[1]) ** 2) + ((center[0]-tuple_right[0]) ** 2))
-                        if (tuple_dist > tuple_left_dist) and (tuple[0] < center[0]):
-                            tuple_left = tuple
-                        if (tuple_dist > tuple_right_dist) and (tuple[0] > center[0]):
-                            tuple_right = tuple
-                    cv2.circle(frame, tuple_left, 10, (255,0,0), -1)
-                    cv2.circle(frame, tuple_right, 10, (255,0,0), -1)
+            tuple_a = center
+            tuple_a_dist = 0
+            # Find two furthest tuples.
+            for c in c_target:
+                for tuple in c:
+                    # loop through, find tuple furthest from center
+                    tuple_dist = math.sqrt(
+                        ((center[0]-tuple[0][0]) ** 2) + ((center[1]-tuple[0][1]) ** 2))
+                    if tuple_dist > tuple_a_dist:
+                        tuple_a = tuple[0]
+                        tuple_a_dist = tuple_dist
 
-                    # take slopes of lines between head and center, center and tail
-                    slope_left.append((cy-tuple_left[1])/(cx-tuple_left[0]))
-                    slope_right.append((tuple_right[1]-cy)/(tuple_right[0]-cx))
+            tuple_b = tuple_a
+            tuple_b_dist = 0
+            for c in c_target:
+                for tuple in c:
+                    # loop through, find tuple furthest from first tuple
+                    tuple_dist = math.sqrt(
+                        ((tuple_a[0]-tuple[0][0]) ** 2) + ((tuple_a[1]-tuple[0][1]) ** 2))
+                    if tuple_dist > tuple_b_dist:
+                        tuple_b = tuple[0]
+                        tuple_b_dist = tuple_dist
 
-                    cv2.line(frame, tuple_left, (cx,cy), (0,0,0), 10)
-                    cv2.line(frame, (cx,cy), tuple_right, (0,0,0), 10)
+            # draw tuples as points
+            cv2.circle(
+                frame, (int(tuple_a[0]), int(tuple_a[1])), 10, (255, 0, 0), -1)
+            cv2.circle(
+                frame, (int(tuple_b[0]), int(tuple_b[1])), 10, (255, 0, 0), -1)
 
-            #enclosed_x_array = np.array(enclosed_x)
-            #enclosed_y_array = np.array(enclosed_y)
+            # draw new enclosing circle + center
+            radius = math.sqrt(
+                ((center[1]-tuple_a[1]) ** 2) + ((center[0]-tuple_a[0]) ** 2))
+            cv2.circle(gray_invert, (int(center[0]), int(
+                center[1])), int(radius), (255, 255, 255), 3)
+            cv2.circle(frame, (int(center[0]), int(
+                center[1])), int(radius), (0, 0, 0), 3)
+            cv2.circle(frame, (int(center[0]), int(
+                center[1])), 10, (0, 0, 0), 3)
+
+            # display some of the info onto the image
+            centertxt = 'Enclosing Circle Center: ' + \
+                str(center[0]) + ',' + str(center[1])
+            cv2.putText(gray_invert, centertxt, (75, 150),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
+            radtxt = 'Enclosing Circle Radius: ' + str(radius) + ' px'
+            cv2.putText(gray_invert, radtxt, (75, 250),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
+
+            # take slopes of lines between head and center, center and tail
+            # if (cy-tuple_left[1])/(cx-tuple_left[0]) != 0:
+            #     slope_left.append((cy-tuple_left[1])/(cx-tuple_left[0]))
+            # else:
+            #     slope_left.append(0)
+            # if (tuple_right[1]-cy)/(tuple_right[0]-cx) != 0:
+            #     slope_right.append((tuple_right[1]-cy)/(tuple_right[0]-cx))
+            # else:
+            #     slope_right.append(0)
+            cv2.line(frame, (tuple_a[0], tuple_a[1]),
+                     (int(center[0]), int(center[1])), (255, 255, 255), 7)
+            cv2.line(frame, (tuple_b[0], tuple_b[1]),
+                     (int(center[0]), int(center[1])), (255, 255, 255), 7)
 
             cv2.imshow('orig', frame)
             cv2.imshow('analysis', gray_invert)
 
             # Press Q on keyboard to stop recording
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(0) & 0xFF == ord('q'):
                 break
+
         # Break the loop
         else:
+            print('Read error...')
             break
+
     # When everything done, release the video capture and video write objects
     vidObj.release()
     # Closes all the frames
