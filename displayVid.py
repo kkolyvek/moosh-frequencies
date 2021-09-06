@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import math
 
+from numpy.lib.function_base import average
+
 # IMPORT METHODS
 from helpers import isInCircle
 from filter import mooshFilters, hardFilter
@@ -48,11 +50,9 @@ def display_vid(vidObj):
 
             cv2.drawContours(frame, contours, -1, (0, 0, 255), 1)
 
-            # TODO: Use Moments to find actual centroid
-            # https://docs.opencv.org/4.5.1/dd/d49/tutorial_py_contour_features.html, section 1
             cx = 0  # average x value (for centroid approx)
             cy = 0  # average y value (for centroid approx)
-            c_target = []  # array of contours on target
+            c_target = []  # array of dictionaries of on-target contours
 
             for c in contours:
                 (x, y), radius = cv2.minEnclosingCircle(c)
@@ -64,40 +64,70 @@ def display_vid(vidObj):
                     # draw contour's min enclosing circle
                     cv2.circle(frame, center, radius, (0, 255, 0), 2)
 
+                    # get moment
+                    mu = cv2.moments(c)
+
+                    # get centroid (+ 1e-5 to avoid div by zero)
+                    mc = (mu['m10'] / (mu['m00'] + 1e-5),
+                          mu['m01'] / (mu['m00'] + 1e-5))
+
+                    contour_dictionary = {
+                        "contour": c,
+                        "enc_circle_midpoint": (x, y),
+                        "enc_circle_rad": radius,
+                        "centroid": mc
+                    }
+
                     # record a target contour
-                    c_target.append(c)
+                    c_target.append(contour_dictionary)
 
                     # record center values
-                    cx += center[0]
-                    cy += center[1]
+                    # cx += center[0]
+                    # cy += center[1]
 
             """
             TODO
             THIS IS GOOD STUFF HERE BUT:
             - only grabs moment of one contour... this is fine for a starting point
             - find a way to combine moments of multiple contours... contour addition? i dunno
-            ===========================================================================
-            """
-            print(c_target[0])
-            Moments = cv2.moments(c_target[0])
-            print(Moments)
-            mx = int(Moments["m10"] / Moments["m00"])
-            my = int(Moments["m01"] / Moments["m00"])
-            cv2.circle(frame, (mx, my), 10, (0, 0, 255), 3)
-
-            center = (cx/len(c_target[0]), cy/len(c_target[0]))
-            """
+            - https://docs.opencv.org/4.5.1/dd/d49/tutorial_py_contour_features.html
             ===========================================================================
             """
 
-            tuple_a = center
+            # If there is more than one contour, get weighted average of their locations
+            averaged_centroid = None
+            if len(c_target) > 1:
+                total_rad = 0
+                for i in range(len(c_target)):
+                    total_rad += c_target[i]["enc_circle_rad"]
+
+                avg_x = 0
+                avg_y = 0
+                for i in range(len(c_target)):
+                    avg_x += (c_target[i]["centroid"][0] *
+                              (c_target[i]["enc_circle_rad"] / total_rad))
+                    avg_y += (c_target[i]["centroid"][1] *
+                              (c_target[i]["enc_circle_rad"] / total_rad))
+                averaged_centroid = (avg_x, avg_y)
+            else:
+                averaged_centroid = c_target[0]["centroid"]
+
+            # Display centroids of all contours
+            cv2.circle(frame, (int(averaged_centroid[0]), int(
+                averaged_centroid[1])), 4, (0, 255, 0), -1)
+
+            """
+            ===========================================================================
+            """
+
+            tuple_a = averaged_centroid
             tuple_a_dist = 0
             # Find two furthest tuples.
             for c in c_target:
-                for tuple in c:
+                for tuple in c["contour"]:
                     # loop through, find tuple furthest from center
                     tuple_dist = math.sqrt(
-                        ((center[0]-tuple[0][0]) ** 2) + ((center[1]-tuple[0][1]) ** 2))
+                        ((averaged_centroid[0]-tuple[0][0]) ** 2) + ((averaged_centroid[1]-tuple[0][1]) ** 2))
                     if tuple_dist > tuple_a_dist:
                         tuple_a = tuple[0]
                         tuple_a_dist = tuple_dist
@@ -105,7 +135,7 @@ def display_vid(vidObj):
             tuple_b = tuple_a
             tuple_b_dist = 0
             for c in c_target:
-                for tuple in c:
+                for tuple in c["contour"]:
                     # loop through, find tuple furthest from first tuple
                     tuple_dist = math.sqrt(
                         ((tuple_a[0]-tuple[0][0]) ** 2) + ((tuple_a[1]-tuple[0][1]) ** 2))
@@ -120,23 +150,23 @@ def display_vid(vidObj):
                 frame, (int(tuple_b[0]), int(tuple_b[1])), 10, (255, 0, 0), -1)
 
             # draw new enclosing circle + center
-            radius = math.sqrt(
-                ((center[1]-tuple_a[1]) ** 2) + ((center[0]-tuple_a[0]) ** 2))
-            cv2.circle(gray_invert, (int(center[0]), int(
-                center[1])), int(radius), (255, 255, 255), 3)
-            cv2.circle(frame, (int(center[0]), int(
-                center[1])), int(radius), (0, 0, 0), 3)
-            cv2.circle(frame, (int(center[0]), int(
-                center[1])), 10, (0, 0, 0), 3)
+            # radius = math.sqrt(
+            #     ((center[1]-tuple_a[1]) ** 2) + ((center[0]-tuple_a[0]) ** 2))
+            # cv2.circle(gray_invert, (int(center[0]), int(
+            #     center[1])), int(radius), (255, 255, 255), 3)
+            # cv2.circle(frame, (int(center[0]), int(
+            #     center[1])), int(radius), (0, 0, 0), 3)
+            # cv2.circle(frame, (int(center[0]), int(
+            #     center[1])), 10, (0, 0, 0), 3)
 
             # display some of the info onto the image
-            centertxt = 'Enclosing Circle Center: ' + \
-                str(center[0]) + ',' + str(center[1])
-            cv2.putText(gray_invert, centertxt, (75, 150),
-                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
-            radtxt = 'Enclosing Circle Radius: ' + str(radius) + ' px'
-            cv2.putText(gray_invert, radtxt, (75, 250),
-                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
+            # centertxt = 'Enclosing Circle Center: ' + \
+            #     str(averaged_centroid[0]) + ',' + str(averaged_centroid[1])
+            # cv2.putText(gray_invert, centertxt, (75, 150),
+            #             cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
+            # radtxt = 'Enclosing Circle Radius: ' + str(radius) + ' px'
+            # cv2.putText(gray_invert, radtxt, (75, 250),
+            #             cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 4, cv2.LINE_4)
 
             # take slopes of lines between head and center, center and tail
             # if (cy-tuple_left[1])/(cx-tuple_left[0]) != 0:
@@ -147,10 +177,10 @@ def display_vid(vidObj):
             #     slope_right.append((tuple_right[1]-cy)/(tuple_right[0]-cx))
             # else:
             #     slope_right.append(0)
-            cv2.line(frame, (tuple_a[0], tuple_a[1]),
-                     (int(center[0]), int(center[1])), (255, 255, 255), 7)
-            cv2.line(frame, (tuple_b[0], tuple_b[1]),
-                     (int(center[0]), int(center[1])), (255, 255, 255), 7)
+            # cv2.line(frame, (tuple_a[0], tuple_a[1]),
+            #          (int(center[0]), int(center[1])), (255, 255, 255), 7)
+            # cv2.line(frame, (tuple_b[0], tuple_b[1]),
+            #          (int(center[0]), int(center[1])), (255, 255, 255), 7)
 
             cv2.imshow('orig', frame)
             cv2.imshow('analysis', gray_invert)
