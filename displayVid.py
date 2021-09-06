@@ -71,7 +71,24 @@ def display_vid(vidObj):
                     cx += center[0]
                     cy += center[1]
 
-            center = (cx/len(c_target), cy/len(c_target))
+            """
+            TODO
+            THIS IS GOOD STUFF HERE BUT:
+            - only grabs moment of one contour... this is fine for a starting point
+            - find a way to combine moments of multiple contours... contour addition? i dunno
+            ===========================================================================
+            """
+            print(c_target[0])
+            Moments = cv2.moments(c_target[0])
+            print(Moments)
+            mx = int(Moments["m10"] / Moments["m00"])
+            my = int(Moments["m01"] / Moments["m00"])
+            cv2.circle(frame, (mx, my), 10, (0, 0, 255), 3)
+
+            center = (cx/len(c_target[0]), cy/len(c_target[0]))
+            """
+            ===========================================================================
+            """
 
             tuple_a = center
             tuple_a_dist = 0
