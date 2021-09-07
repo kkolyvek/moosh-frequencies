@@ -2,11 +2,12 @@
 import cv2
 import numpy as np
 import math
+from matplotlib import pyplot as plt
 
 from numpy.lib.function_base import average
 
 # IMPORT METHODS
-from helpers import isInCircle
+from helpers import getVideoInfo, isInCircle
 from filter import mooshFilters, hardFilter
 
 
@@ -27,6 +28,7 @@ def display_vid(vidObj):
 
     slope_a = []
     slope_b = []
+    slope_data = []
 
     # counter / arr to record centroids
     counter = -1
@@ -62,7 +64,7 @@ def display_vid(vidObj):
                 radius = int(radius)
 
                 # this radius limit ensures no small artifacts and no larger circle around the image
-                if 25 < radius < 10000:
+                if 30 < radius < 10000:
                     # draw contour's min enclosing circle
                     cv2.circle(frame, center, radius, (0, 255, 0), 2)
 
@@ -143,14 +145,20 @@ def display_vid(vidObj):
 
             # take slopes of lines between head and center, center and tail
             if averaged_centroid[0] == tuple_a[0]:
+                head_slope = 0
                 slope_a.append(0)
             else:
+                head_slope = (averaged_centroid[1]-tuple_a[1]) / (averaged_centroid[0]-tuple_a[0])
                 slope_a.append((averaged_centroid[1]-tuple_a[1]) / (averaged_centroid[0]-tuple_a[0]))
 
             if averaged_centroid[0] == tuple_b[0]:
+                tail_slope = 0
                 slope_b.append(0)
             else:
+                tail_slope = (tuple_b[1]-averaged_centroid[1]) / (tuple_b[0]-averaged_centroid[0])
                 slope_b.append((tuple_b[1]-averaged_centroid[1]) / (tuple_b[0]-averaged_centroid[0]))
+
+            slope_data.append(tail_slope-head_slope)
 
             cv2.imshow('orig', frame)
             cv2.imshow('analysis', gray_invert)
@@ -163,9 +171,32 @@ def display_vid(vidObj):
         else:
             print('Read error...')
             break
+    
+    # when video is complete, plot results and find FFT
+    vidInfo = getVideoInfo(vidObj)
 
-    print(slope_a)
-    print(slope_b)
+    x = np.linspace(1/vidInfo['fps'], vidInfo['length'] / vidInfo['fps'], vidInfo['length'])
+    y = slope_b
+
+    FT = np.fft.fft(y) / len(y) # take FFT with normalized amplitude
+    FT = FT[range(int(len(y) / 2))]
+    values = np.arange(int(len(x) / 2))
+    timePeriod = len(x) / vidInfo['fps']
+    frequencies = values / timePeriod
+
+    # plot setup
+    fig, (ax1, ax2) = plt.subplots(2)
+    ax1.plot(x, y, 'b-')
+    ax1.set(title = 'Slope of Shark Tail Over Time',
+            xlabel = 'time (s)',
+            ylabel = 'Slope of Tail')
+
+    ax2.loglog(frequencies, abs(FT), 'r-')
+    ax2.set(title = 'Fourier Transform of Shark Tail Slope',
+            xlabel = 'freqs (hz)',
+            ylabel = 'amplitude')
+
+    plt.show()
 
     # When everything done, release the video capture and video write objects
     vidObj.release()

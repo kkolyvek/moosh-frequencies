@@ -14,7 +14,6 @@ import cv2
 
 # IMPORT METHODS
 from helpers import getVideoInfo
-from displayFreq import display_freq
 from displayVid import display_vid
 from createVid import create_vid
 
@@ -37,19 +36,12 @@ def main():
 
     """
     MAIN FUNCTION:
-    Performs tail-beat frequency analysis and saves a chart of tail slope and tail-beat frequencies to the working directory.
-    """
-    # display_freq(vidObj)
-
-    """
-    ASSISTANT FUNCTION:
-    Performs all image processing tasks and displays the results.
+    Performs all image processing tasks and displays the results in a chart.
     * It is recommended to use this process function first to test the accuracy of the countouring! *
     """
     display_vid(vidObj)
 
     """
-    ASSISTANT FUNCTION:
     Performs all image processing tasks and creates a video file of the result in the working directory.
     """
     # create_vid(vidObj)

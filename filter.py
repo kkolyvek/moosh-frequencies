@@ -51,7 +51,7 @@ def hardFilter(frame):
     - Use inRange to select by channel
     """
     # Omit higher green values using inRange
-    low_green = cv2.inRange(frame, (0, 0, 0), (255, 102, 255))
+    low_green = cv2.inRange(frame, (0, 0, 0), (115, 108, 255))
 
     # Find contours.
     contours, hierarchy = cv2.findContours(
